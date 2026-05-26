@@ -2,7 +2,6 @@ import json
 from pathlib import Path
 
 import pytest
-from httpx import Client, HTTPStatusError
 from pydantic import ValidationError
 
 from ttcli.auth import (
@@ -10,7 +9,7 @@ from ttcli.auth import (
     AuthError,
     load_tokens,
     save_tokens,
-    authenticate_device,
+    _exchange_code,
     refresh_access_token,
     is_authenticated,
 )
@@ -46,6 +45,14 @@ class TestTokenData:
     def test_expires_in_is_required(self):
         with pytest.raises(ValidationError):
             TokenData(access_token="abc", refresh_token="def")
+
+    def test_is_expired_false_when_recent(self):
+        token = TokenData(access_token="a", refresh_token="b", expires_in=3600)
+        assert not token.is_expired
+
+    def test_is_expired_true_when_elapsed(self):
+        token = TokenData(access_token="a", refresh_token="b", expires_in=0)
+        assert token.is_expired
 
 
 class TestTokenStorage:
@@ -85,18 +92,8 @@ class TestTokenStorage:
         assert is_authenticated(tmp_path) is False
 
 
-class TestAuthenticateDevice:
-    def test_successful_device_auth(self, tmp_path, httpx_mock):
-        httpx_mock.add_response(
-            url="https://api.ticktick.com/oauth/token",
-            method="POST",
-            json={
-                "device_code": "dev-123",
-                "user_code": "ABC-DEF",
-                "verification_uri": "https://ticktick.com/activate",
-                "interval": 1,
-            },
-        )
+class TestExchangeCode:
+    def test_successful_exchange(self, httpx_mock):
         httpx_mock.add_response(
             url="https://api.ticktick.com/oauth/token",
             method="POST",
@@ -107,53 +104,20 @@ class TestAuthenticateDevice:
                 "token_type": "Bearer",
             },
         )
+        token = _exchange_code("code-123", "cid", "cs", "http://localhost:8000/cb")
+        assert token.access_token == "at-123"
+        assert token.refresh_token == "rt-123"
+        assert token.expires_in == 3600
 
-        result = authenticate_device("client-123", "secret-456", storage_dir=tmp_path)
-        assert result.access_token == "at-123"
-        assert result.refresh_token == "rt-123"
-        assert is_authenticated(tmp_path) is True
-
-    def test_auth_polls_until_complete(self, tmp_path, httpx_mock):
-        httpx_mock.add_response(
-            url="https://api.ticktick.com/oauth/token",
-            method="POST",
-            json={
-                "device_code": "dev-123",
-                "user_code": "ABC-DEF",
-                "verification_uri": "https://ticktick.com/activate",
-                "interval": 1,
-            },
-        )
-        # First poll: authorization_pending
+    def test_exchange_raises_on_error(self, httpx_mock):
         httpx_mock.add_response(
             url="https://api.ticktick.com/oauth/token",
             method="POST",
             status_code=400,
-            json={"error": "authorization_pending"},
+            json={"error": "invalid_grant"},
         )
-        # Second poll: success
-        httpx_mock.add_response(
-            url="https://api.ticktick.com/oauth/token",
-            method="POST",
-            json={
-                "access_token": "at-456",
-                "refresh_token": "rt-456",
-                "expires_in": 7200,
-            },
-        )
-
-        result = authenticate_device("client-123", "secret-456", storage_dir=tmp_path)
-        assert result.access_token == "at-456"
-
-    def test_raises_auth_error_on_invalid_client(self, tmp_path, httpx_mock):
-        httpx_mock.add_response(
-            url="https://api.ticktick.com/oauth/token",
-            method="POST",
-            status_code=400,
-            json={"error": "invalid_client"},
-        )
-        with pytest.raises(AuthError, match="invalid_client"):
-            authenticate_device("bad-client", "bad-secret", storage_dir=tmp_path)
+        with pytest.raises(AuthError, match="invalid_grant"):
+            _exchange_code("bad-code", "cid", "cs", "http://localhost:8000/cb")
 
 
 class TestRefreshAccessToken:
@@ -175,11 +139,12 @@ class TestRefreshAccessToken:
             },
         )
 
-        result = refresh_access_token("rt-123", "client-123", "secret-456", storage_dir=tmp_path)
+        result = refresh_access_token(
+            "rt-123", "cid", "cs", storage_dir=tmp_path
+        )
         assert result.access_token == "new-at"
         assert result.refresh_token == "new-rt"
 
-        # Verify stored tokens are updated
         loaded = load_tokens(tmp_path)
         assert loaded is not None
         assert loaded.access_token == "new-at"
@@ -193,4 +158,6 @@ class TestRefreshAccessToken:
             json={"error": "invalid_grant"},
         )
         with pytest.raises(AuthError, match="invalid_grant"):
-            refresh_access_token("bad-rt", "client-123", "secret-456", storage_dir=tmp_path)
+            refresh_access_token(
+                "bad-rt", "cid", "cs", storage_dir=tmp_path
+            )

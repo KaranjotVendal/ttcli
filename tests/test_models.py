@@ -1,7 +1,34 @@
 import pytest
 from pydantic import ValidationError
 
-from ttcli.models import Task, Project
+from ttcli.models import Task, Project, ChecklistItem
+
+
+class TestChecklistItem:
+    def test_create_with_title(self):
+        item = ChecklistItem(title="Subtask 1")
+        assert item.title == "Subtask 1"
+        assert item.status == 0
+
+    def test_create_with_all_fields(self):
+        item = ChecklistItem(
+            id="item1",
+            title="Subtask",
+            status=0,
+            sortOrder=1,
+            startDate="2019-11-13T03:00:00+0000",
+            isAllDay=False,
+            timeZone="America/Los_Angeles",
+            completedTime="2019-11-13T03:00:00+0000",
+        )
+        assert item.id == "item1"
+        assert item.status == 0
+        assert item.isAllDay is False
+
+    def test_unknown_fields_ignored(self):
+        item = ChecklistItem(**{"title": "Test", "bogus": "ignored"})
+        assert item.title == "Test"
+        assert not hasattr(item, "bogus")
 
 
 class TestTask:
@@ -9,7 +36,7 @@ class TestTask:
         task = Task(title="Buy groceries")
         assert task.title == "Buy groceries"
         assert task.priority == 0
-        assert task.status == "todo"
+        assert task.status == 0
         assert task.content is None
         assert task.id is None
         assert task.projectId is None
@@ -20,21 +47,43 @@ class TestTask:
             projectId="64def789012",
             title="Buy groceries",
             content="Milk, eggs, bread",
-            dueDate="2026-06-01T10:00:00Z",
+            desc="Checklist description",
+            isAllDay=False,
+            startDate="2019-11-13T03:00:00+0000",
+            dueDate="2019-11-14T03:00:00+0000",
+            timeZone="America/Los_Angeles",
+            reminders=["TRIGGER:P0DT9H0M0S"],
+            repeatFlag="RRULE:FREQ=DAILY;INTERVAL=1",
             priority=1,
-            status="todo",
+            status=0,
+            sortOrder=12345,
+            completedTime="2019-11-13T03:00:00+0000",
             tags=["personal", "shopping"],
-            timeZone="Asia/Kolkata",
+            kind="TEXT",
+            etag="abc123",
         )
         assert task.id == "64abc123456"
-        assert task.projectId == "64def789012"
         assert task.title == "Buy groceries"
-        assert task.content == "Milk, eggs, bread"
-        assert task.dueDate == "2026-06-01T10:00:00Z"
-        assert task.priority == 1
-        assert task.status == "todo"
-        assert task.tags == ["personal", "shopping"]
-        assert task.timeZone == "Asia/Kolkata"
+        assert task.desc == "Checklist description"
+        assert task.isAllDay is False
+        assert task.startDate == "2019-11-13T03:00:00+0000"
+        assert task.repeatFlag == "RRULE:FREQ=DAILY;INTERVAL=1"
+        assert task.status == 0
+        assert task.sortOrder == 12345
+        assert task.kind == "TEXT"
+        assert task.etag == "abc123"
+
+    def test_create_with_items(self):
+        task = Task(
+            title="With subtasks",
+            items=[
+                ChecklistItem(title="Sub 1", status=0),
+                ChecklistItem(title="Sub 2", status=1),
+            ],
+        )
+        assert len(task.items) == 2
+        assert task.items[0].title == "Sub 1"
+        assert task.items[1].status == 1
 
     def test_serialize_excludes_none_fields(self):
         task = Task(
@@ -82,6 +131,9 @@ class TestProject:
             color="#FF0000",
             sortOrder=1,
             kind="TASK",
+            closed=False,
+            groupId="group1",
+            viewMode="list",
             isOwner=True,
         )
         assert project.id == "64def789012"
@@ -89,6 +141,9 @@ class TestProject:
         assert project.color == "#FF0000"
         assert project.sortOrder == 1
         assert project.kind == "TASK"
+        assert project.closed is False
+        assert project.groupId == "group1"
+        assert project.viewMode == "list"
         assert project.isOwner is True
 
     def test_json_round_trip(self):
