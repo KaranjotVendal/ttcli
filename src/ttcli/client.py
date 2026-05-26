@@ -143,9 +143,13 @@ class TickTickClient:
         url = f"{BASE_URL}{path}"
         for attempt in range(2):
             resp = self._client.request(method, url, **kwargs)
-            if resp.status_code == 401 and attempt == 0 and self._client_id:
-                self._refresh_token()
-                continue
+            if resp.status_code == 401 and attempt == 0:
+                if self._client_id and self._client_secret:
+                    self._refresh_token()
+                    continue
+                raise ClientError(
+                    "Token rejected by API. Run 'ttcli auth refresh' or 'ttcli auth setup' to re-authenticate."
+                )
             if resp.status_code >= 400:
                 body = self._safe_json(resp)
                 msg = body.get("message", body.get("error", resp.text))
