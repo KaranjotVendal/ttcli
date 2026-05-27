@@ -229,7 +229,7 @@ class TestClientProjectMethods:
 
 
 class TestClientAuthRefresh:
-    def test_refreshes_token_on_401(self, token, httpx_mock):
+    def test_refreshes_token_on_401(self, token, httpx_mock, tmp_path):
         httpx_mock.add_response(
             url="https://api.ticktick.com/open/v1/project",
             method="GET",
@@ -252,7 +252,10 @@ class TestClientAuthRefresh:
         )
 
         http = httpx.Client()
-        tc = TickTickClient(token, client_id="cid", client_secret="cs", http_client=http)
+        tc = TickTickClient(
+            token, client_id="cid", client_secret="cs",
+            http_client=http, storage_dir=tmp_path,
+        )
         projects = tc.list_projects()
         assert len(projects) == 1
         assert tc._token.access_token == "new-at"
