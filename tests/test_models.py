@@ -159,10 +159,6 @@ class TestProject:
         assert project.name == "Test"
         assert not hasattr(project, "bogus")
 
-    def test_id_is_required(self):
-        with pytest.raises(ValidationError):
-            Project(name="No ID")
-
     def test_name_is_required(self):
         with pytest.raises(ValidationError):
             Project(id="abc")

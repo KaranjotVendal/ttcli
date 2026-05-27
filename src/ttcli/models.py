@@ -41,7 +41,7 @@ class Task(BaseModel):
 class Project(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
-    id: str
+    id: str | None = None
     name: str
     color: str | None = None
     sortOrder: int | None = None

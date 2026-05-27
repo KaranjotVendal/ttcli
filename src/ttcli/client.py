@@ -194,20 +194,25 @@ def api_client(
     token = load_tokens(storage_dir)
     if token is None:
         raise ClientError("Not authenticated. Run 'ttcli auth setup' first.")
+
+    # Use stored credentials if not explicitly provided
+    cid = client_id or token.client_id
+    csec = client_secret or token.client_secret
+
     if token.is_expired:
-        if not client_id or not client_secret:
+        if not cid or not csec:
             raise ClientError(
                 "Token expired. Provide client_id/client_secret or run 'ttcli auth refresh'."
             )
         token = refresh_access_token(
-            token.refresh_token, client_id, client_secret, storage_dir=storage_dir
+            token.refresh_token, cid, csec, storage_dir=storage_dir
         )
     http = httpx.Client(base_url=BASE_URL)
     try:
         yield TickTickClient(
             token,
-            client_id=client_id,
-            client_secret=client_secret,
+            client_id=cid,
+            client_secret=csec,
             http_client=http,
         )
     finally:

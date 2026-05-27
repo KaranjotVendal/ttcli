@@ -21,6 +21,8 @@ class TokenData(BaseModel):
     token_type: str = "Bearer"
     scope: str | None = None
     obtained_at: datetime | None = None
+    client_id: str | None = None
+    client_secret: str | None = None
 
     def model_post_init(self, __context) -> None:
         if self.obtained_at is None:
@@ -173,6 +175,8 @@ def authenticate_local_server(
 
     code = _CallbackHandler.code
     token = _exchange_code(code, client_id, client_secret, redirect_uri)
+    token.client_id = client_id
+    token.client_secret = client_secret
     save_tokens(token, storage_dir)
     print(f"  ✅ Authorized successfully.\n")
     return token
@@ -186,6 +190,8 @@ def refresh_access_token(
     http_client: httpx.Client | None = None,
 ) -> TokenData:
     """Refresh an expired access token and save the new tokens."""
+    # Load old token to carry over stored credentials
+    old_token = load_tokens(storage_dir)
     close_client = http_client is None
     client = http_client or httpx.Client()
 
@@ -211,6 +217,9 @@ def refresh_access_token(
             expires_in=token_resp.get("expires_in", 3600),
             token_type=token_resp.get("token_type", "Bearer"),
             scope=token_resp.get("scope"),
+            # Carry over stored credentials
+            client_id=old_token.client_id if old_token else None,
+            client_secret=old_token.client_secret if old_token else None,
         )
 
         save_tokens(token, storage_dir)

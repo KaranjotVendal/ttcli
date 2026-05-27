@@ -317,7 +317,7 @@ def filter(
 
 
 # ------------------------------------------------------------------
-# Project commands (placeholder)
+# Project commands
 # ------------------------------------------------------------------
 
 
@@ -327,9 +327,151 @@ def project_callback() -> None:
 
 
 @project_app.command()
-def list() -> None:
-    """List projects (not yet implemented)."""
-    console.print("Project commands coming soon.")
+def list(
+    json: bool = typer.Option(False, "--json", help="Output as JSON"),
+) -> None:
+    """List all projects."""
+    with _get_client() as client:
+        projects = client.list_projects()
+
+    if json:
+        console.print(json_lib.dumps(
+            [p.model_dump(exclude_none=True) for p in projects], indent=2
+        ))
+    else:
+        if not projects:
+            console.print("[yellow]No projects found.[/yellow]")
+            return
+        table = Table(title="Projects")
+        table.add_column("ID", style="dim")
+        table.add_column("Name")
+        table.add_column("Kind")
+        for p in projects:
+            table.add_row(p.id, p.name, p.kind or "")
+        console.print(table)
+
+
+@project_app.command()
+def get(
+    project_id: str = typer.Argument(..., help="Project ID"),
+    json: bool = typer.Option(False, "--json", help="Output as JSON"),
+) -> None:
+    """Get a single project by ID."""
+    with _get_client() as client:
+        project = client.get_project(project_id)
+
+    if json:
+        console.print(json_lib.dumps(project.model_dump(exclude_none=True), indent=2))
+    else:
+        info = f"[bold]Name:[/bold] {project.name}\n"
+        if project.color:
+            info += f"[bold]Color:[/bold] {project.color}\n"
+        if project.kind:
+            info += f"[bold]Kind:[/bold] {project.kind}\n"
+        if project.viewMode:
+            info += f"[bold]View:[/bold] {project.viewMode}\n"
+        if project.closed is not None:
+            info += f"[bold]Closed:[/bold] {project.closed}\n"
+        console.print(Panel(info, title=f"Project {project.id}"))
+
+
+@project_app.command()
+def create(
+    name: str = typer.Argument(..., help="Project name"),
+    color: str = typer.Option(None, "--color", help="Project color (hex)"),
+    json: bool = typer.Option(False, "--json", help="Output as JSON"),
+) -> None:
+    """Create a new project."""
+    from ttcli.models import Project as ProjectModel
+
+    project = ProjectModel(name=name, color=color)
+    with _get_client() as client:
+        created = client.create_project(project)
+
+    if json:
+        console.print(json_lib.dumps(created.model_dump(exclude_none=True), indent=2))
+    else:
+        console.print(f"[green]✅ Project created:[/green] '{created.name}' (id={created.id})")
+
+
+@project_app.command()
+def update(
+    project_id: str = typer.Argument(..., help="Project ID"),
+    name: str = typer.Option(None, "--name", "-n", help="New name"),
+    color: str = typer.Option(None, "--color", help="New color (hex)"),
+    json: bool = typer.Option(False, "--json", help="Output as JSON"),
+) -> None:
+    """Update a project."""
+    with _get_client() as client:
+        current = client.get_project(project_id)
+        if name is not None:
+            current.name = name
+        if color is not None:
+            current.color = color
+        updated = client.update_project(project_id, current)
+
+    if json:
+        console.print(json_lib.dumps(updated.model_dump(exclude_none=True), indent=2))
+    else:
+        console.print(f"[green]✅ Project updated:[/green] '{updated.name}'")
+
+
+@project_app.command()
+def delete(
+    project_id: str = typer.Argument(..., help="Project ID"),
+) -> None:
+    """Delete a project."""
+    with _get_client() as client:
+        client.delete_project(project_id)
+    console.print(f"[green]✅ Project deleted:[/green] {project_id}")
+
+
+@project_app.command()
+def data(
+    project_id: str = typer.Argument(..., help="Project ID"),
+    json: bool = typer.Option(False, "--json", help="Output as JSON"),
+) -> None:
+    """Get full project data with tasks and columns."""
+    with _get_client() as client:
+        result = client.get_project_data(project_id)
+
+    if json:
+        console.print(json_lib.dumps(result, indent=2, default=str))
+    else:
+        proj_info = result.get("project", result)
+        console.print(f"[bold]Project:[/bold] {proj_info.get('name', project_id)}")
+        console.print(f"[bold]ID:[/bold] {proj_info.get('id')}\n")
+
+        tasks = result.get("tasks", [])
+        if tasks:
+            table = Table(title="Tasks")
+            table.add_column("ID", style="dim")
+            table.add_column("Title")
+            table.add_column("Priority", justify="center")
+            table.add_column("Status")
+            for t in tasks:
+                status_str = {0: "todo", 1: "doing", 2: "done"}.get(t.get("status", 0), str(t.get("status", 0)))
+                table.add_row(
+                    t.get("id", ""),
+                    t.get("title", ""),
+                    str(t.get("priority", 0)),
+                    status_str,
+                )
+            console.print(table)
+
+        columns = result.get("columns", [])
+        if columns:
+            col_table = Table(title="Columns")
+            col_table.add_column("ID", style="dim")
+            col_table.add_column("Name")
+            col_table.add_column("Sort Order", justify="center")
+            for c in columns:
+                col_table.add_row(
+                    c.get("id", ""),
+                    c.get("name", ""),
+                    str(c.get("sortOrder", 0)),
+                )
+            console.print(col_table)
 
 
 if __name__ == "__main__":

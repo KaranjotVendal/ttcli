@@ -213,8 +213,7 @@ class TestClientProjectMethods:
             url="https://api.ticktick.com/open/v1/project/p1/data",
             method="GET",
             json={
-                "id": "p1",
-                "name": "Work",
+                "project": {"id": "p1", "name": "Work"},
                 "tasks": [
                     {"id": "t1", "title": "Task", "projectId": "p1", "status": 0}
                 ],
@@ -224,7 +223,7 @@ class TestClientProjectMethods:
             },
         )
         data = client.get_project_data("p1")
-        assert data["id"] == "p1"
+        assert data["project"]["id"] == "p1"
         assert len(data["tasks"]) == 1
         assert len(data["columns"]) == 1
 
