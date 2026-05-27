@@ -20,23 +20,37 @@ def authed_env(tmp_path):
 class TestTaskCli:
     def test_list(self, authed_env, httpx_mock):
         httpx_mock.add_response(
+            url="https://api.ticktick.com/open/v1/project",
+            method="GET",
+            json=[{"id": "p1", "name": "My Project"}],
+        )
+        httpx_mock.add_response(
             url="https://api.ticktick.com/open/v1/project/p1/data",
             method="GET",
             json={
                 "id": "p1",
-                "name": "Project",
+                "name": "My Project",
                 "tasks": [
                     {"id": "t1", "title": "Task 1", "projectId": "p1", "status": 0},
                     {"id": "t2", "title": "Task 2", "projectId": "p1", "status": 2},
                 ],
             },
         )
-        result = runner.invoke(app, ["task", "list", "--project-id", "p1"], env=authed_env)
+        result = runner.invoke(app, ["task", "list", "--project", "p1"], env=authed_env)
         assert result.exit_code == 0
         assert "Task 1" in result.stdout
         assert "Task 2" in result.stdout
 
+    def _mock_projects(self, httpx_mock):
+        """Add a project list response needed by _resolve_project."""
+        httpx_mock.add_response(
+            url="https://api.ticktick.com/open/v1/project",
+            method="GET",
+            json=[{"id": "p1", "name": "My Project"}],
+        )
+
     def test_list_json(self, authed_env, httpx_mock):
+        self._mock_projects(httpx_mock)
         httpx_mock.add_response(
             url="https://api.ticktick.com/open/v1/project/p1/data",
             method="GET",
@@ -49,48 +63,52 @@ class TestTaskCli:
             },
         )
         result = runner.invoke(
-            app, ["task", "list", "--project-id", "p1", "--json"], env=authed_env
+            app, ["task", "list", "--project", "p1", "--json"], env=authed_env
         )
         assert result.exit_code == 0
         assert '"title": "Task 1"' in result.stdout
 
     def test_get(self, authed_env, httpx_mock):
+        self._mock_projects(httpx_mock)
         httpx_mock.add_response(
             url="https://api.ticktick.com/open/v1/project/p1/task/t1",
             method="GET",
             json={"id": "t1", "projectId": "p1", "title": "My Task", "priority": 3, "status": 0},
         )
         result = runner.invoke(
-            app, ["task", "get", "t1", "--project-id", "p1"], env=authed_env
+            app, ["task", "get", "t1", "--project", "p1"], env=authed_env
         )
         assert result.exit_code == 0
         assert "My Task" in result.stdout
 
     def test_get_json(self, authed_env, httpx_mock):
+        self._mock_projects(httpx_mock)
         httpx_mock.add_response(
             url="https://api.ticktick.com/open/v1/project/p1/task/t1",
             method="GET",
             json={"id": "t1", "projectId": "p1", "title": "My Task", "status": 0},
         )
         result = runner.invoke(
-            app, ["task", "get", "t1", "--project-id", "p1", "--json"], env=authed_env
+            app, ["task", "get", "t1", "--project", "p1", "--json"], env=authed_env
         )
         assert result.exit_code == 0
         assert '"title": "My Task"' in result.stdout
 
     def test_create(self, authed_env, httpx_mock):
+        self._mock_projects(httpx_mock)
         httpx_mock.add_response(
             url="https://api.ticktick.com/open/v1/task",
             method="POST",
             json={"id": "new-t1", "projectId": "p1", "title": "Created Task", "status": 0},
         )
         result = runner.invoke(
-            app, ["task", "create", "Created Task", "--project-id", "p1"], env=authed_env
+            app, ["task", "create", "Created Task", "--project", "p1"], env=authed_env
         )
         assert result.exit_code == 0
         assert "Created Task" in result.stdout
 
     def test_update(self, authed_env, httpx_mock):
+        self._mock_projects(httpx_mock)
         httpx_mock.add_response(
             url="https://api.ticktick.com/open/v1/project/p1/task/t1",
             method="GET",
@@ -102,32 +120,34 @@ class TestTaskCli:
             json={"id": "t1", "projectId": "p1", "title": "Updated Title", "status": 0, "priority": 3},
         )
         result = runner.invoke(
-            app, ["task", "update", "t1", "--project-id", "p1", "--title", "Updated Title", "--priority", "3"],
+            app, ["task", "update", "t1", "--project", "p1", "--title", "Updated Title", "--priority", "3"],
             env=authed_env,
         )
         assert result.exit_code == 0
         assert "Updated Title" in result.stdout
 
     def test_delete(self, authed_env, httpx_mock):
+        self._mock_projects(httpx_mock)
         httpx_mock.add_response(
             url="https://api.ticktick.com/open/v1/project/p1/task/t1",
             method="DELETE",
             status_code=204,
         )
         result = runner.invoke(
-            app, ["task", "delete", "t1", "--project-id", "p1"], env=authed_env
+            app, ["task", "delete", "t1", "--project", "p1"], env=authed_env
         )
         assert result.exit_code == 0
         assert "deleted" in result.stdout.lower()
 
     def test_complete(self, authed_env, httpx_mock):
+        self._mock_projects(httpx_mock)
         httpx_mock.add_response(
             url="https://api.ticktick.com/open/v1/project/p1/task/t1/complete",
             method="POST",
             status_code=204,
         )
         result = runner.invoke(
-            app, ["task", "complete", "t1", "--project-id", "p1"], env=authed_env
+            app, ["task", "complete", "t1", "--project", "p1"], env=authed_env
         )
         assert result.exit_code == 0
         assert "completed" in result.stdout.lower()
@@ -149,7 +169,7 @@ class TestTaskCli:
 
     def test_error_when_not_authenticated(self):
         result = runner.invoke(
-            app, ["task", "list", "--project-id", "p1"],
+            app, ["task", "list", "--project", "p1"],
             env={"TTCLI_AUTH_DIR": "/nonexistent"},
         )
         assert result.exit_code != 0

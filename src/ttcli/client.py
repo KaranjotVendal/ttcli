@@ -31,10 +31,12 @@ class TickTickClient:
         client_id: str | None = None,
         client_secret: str | None = None,
         http_client: httpx.Client | None = None,
+        storage_dir=None,
     ):
         self._token = token
         self._client_id = client_id
         self._client_secret = client_secret
+        self._storage_dir = storage_dir
         self._client = http_client or httpx.Client()
         self._client.headers["Authorization"] = f"Bearer {token.access_token}"
 
@@ -167,6 +169,7 @@ class TickTickClient:
             self._token.refresh_token,
             self._client_id,
             self._client_secret,
+            storage_dir=self._storage_dir,
             http_client=self._client,
         )
         self._client.headers["Authorization"] = f"Bearer {self._token.access_token}"
@@ -214,6 +217,7 @@ def api_client(
             client_id=cid,
             client_secret=csec,
             http_client=http,
+            storage_dir=storage_dir,
         )
     finally:
         http.close()

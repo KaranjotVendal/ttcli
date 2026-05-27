@@ -30,6 +30,42 @@ def _auth_dir() -> Path:
     return Path.home() / ".ttcli"
 
 
+def _resolve_project(project: str) -> str:
+    """Resolve a project name or ID to a project ID.
+
+    If the input matches a project ID directly, use it as-is.
+    Otherwise, search projects by name (case-insensitive, substring match).
+    If exactly one match is found, use its ID.
+    """
+    with _get_client() as client:
+        projects = client.list_projects()
+
+    # Direct ID match
+    for p in projects:
+        if p.id == project:
+            return project
+
+    # Exact name match (case-insensitive)
+    exact = [p for p in projects if p.name.lower() == project.lower()]
+    if len(exact) == 1:
+        return exact[0].id
+
+    # Substring name match (case-insensitive)
+    fuzzy = [p for p in projects if project.lower() in p.name.lower()]
+    if len(fuzzy) == 1:
+        return fuzzy[0].id
+    elif len(fuzzy) > 1:
+        console.print(f"[red]Error:[/red] Multiple projects match '{project}':")
+        for m in fuzzy:
+            console.print(f"  - {m.name} ({m.id})")
+        console.print("Use the project ID instead.")
+        raise typer.Exit(1)
+    else:
+        console.print(f"[red]Error:[/red] No project found matching '{project}'.")
+        console.print("Run 'ttcli project list' to see all projects.")
+        raise typer.Exit(1)
+
+
 def _get_client():
     """Create a TickTickClient from stored tokens."""
     from ttcli.client import api_client, ClientError
@@ -132,12 +168,16 @@ def task_callback() -> None:
 
 @task_app.command()
 def list(
-    project_id: str = typer.Option(..., "--project-id", "-p", help="Project ID"),
+    project: str = typer.Option(
+        ..., "--project", "-p",
+        help="Project name or ID (name supports substring match)",
+    ),
     json: bool = typer.Option(False, "--json", help="Output as JSON"),
 ) -> None:
     """List tasks in a project."""
     from ttcli.models import Task
 
+    project_id = _resolve_project(project)
     with _get_client() as client:
         tasks = client.list_tasks(project_id)
 
@@ -150,23 +190,26 @@ def list(
             console.print("[yellow]No tasks found.[/yellow]")
             return
         table = Table(title=f"Tasks")
-        table.add_column("ID", style="dim")
         table.add_column("Title")
         table.add_column("Priority", justify="center")
         table.add_column("Status")
         for t in tasks:
             status_str = {0: "todo", 1: "doing", 2: "done"}.get(t.status, str(t.status))
-            table.add_row(t.id or "", t.title, str(t.priority), status_str)
+            table.add_row(t.title, str(t.priority), status_str)
         console.print(table)
 
 
 @task_app.command()
 def get(
     task_id: str = typer.Argument(..., help="Task ID"),
-    project_id: str = typer.Option(..., "--project-id", "-p", help="Project ID"),
+    project: str = typer.Option(
+        ..., "--project", "-p",
+        help="Project name or ID (name supports substring match)",
+    ),
     json: bool = typer.Option(False, "--json", help="Output as JSON"),
 ) -> None:
     """Get a single task by ID."""
+    project_id = _resolve_project(project)
     with _get_client() as client:
         task = client.get_task(project_id, task_id)
 
@@ -188,7 +231,10 @@ def get(
 @task_app.command()
 def create(
     title: str = typer.Argument(..., help="Task title"),
-    project_id: str = typer.Option(..., "--project-id", "-p", help="Project ID"),
+    project: str = typer.Option(
+        ..., "--project", "-p",
+        help="Project name or ID (name supports substring match)",
+    ),
     content: str = typer.Option(None, "--content", "-c", help="Task content"),
     due_date: str = typer.Option(None, "--due-date", "-d", help="Due date (ISO 8601)"),
     priority: int = typer.Option(0, "--priority", help="Priority (0=none, 1=low, 3=medium, 5=high)"),
@@ -197,6 +243,7 @@ def create(
     """Create a new task."""
     from ttcli.models import Task as TaskModel
 
+    project_id = _resolve_project(project)
     task = TaskModel(
         title=title,
         projectId=project_id,
@@ -216,7 +263,10 @@ def create(
 @task_app.command()
 def update(
     task_id: str = typer.Argument(..., help="Task ID"),
-    project_id: str = typer.Option(..., "--project-id", "-p", help="Project ID"),
+    project: str = typer.Option(
+        ..., "--project", "-p",
+        help="Project name or ID (name supports substring match)",
+    ),
     title: str = typer.Option(None, "--title", "-t", help="New title"),
     content: str = typer.Option(None, "--content", "-c", help="New content"),
     due_date: str = typer.Option(None, "--due-date", "-d", help="New due date"),
@@ -224,6 +274,7 @@ def update(
     json: bool = typer.Option(False, "--json", help="Output as JSON"),
 ) -> None:
     """Update a task. Omitted fields are left unchanged."""
+    project_id = _resolve_project(project)
     # Fetch current task first
     with _get_client() as client:
         current = client.get_task(project_id, task_id)
@@ -250,9 +301,13 @@ def update(
 @task_app.command()
 def delete(
     task_id: str = typer.Argument(..., help="Task ID"),
-    project_id: str = typer.Option(..., "--project-id", "-p", help="Project ID"),
+    project: str = typer.Option(
+        ..., "--project", "-p",
+        help="Project name or ID (name supports substring match)",
+    ),
 ) -> None:
     """Delete a task."""
+    project_id = _resolve_project(project)
     with _get_client() as client:
         client.delete_task(project_id, task_id)
     console.print(f"[green]✅ Task deleted:[/green] {task_id}")
@@ -261,9 +316,13 @@ def delete(
 @task_app.command()
 def complete(
     task_id: str = typer.Argument(..., help="Task ID"),
-    project_id: str = typer.Option(..., "--project-id", "-p", help="Project ID"),
+    project: str = typer.Option(
+        ..., "--project", "-p",
+        help="Project name or ID (name supports substring match)",
+    ),
 ) -> None:
     """Mark a task as completed."""
+    project_id = _resolve_project(project)
     with _get_client() as client:
         client.complete_task(project_id, task_id)
     console.print(f"[green]✅ Task completed:[/green] {task_id}")
@@ -306,13 +365,12 @@ def filter(
             console.print("[yellow]No tasks found matching criteria.[/yellow]")
             return
         table = Table(title="Filtered Tasks")
-        table.add_column("ID", style="dim")
         table.add_column("Title")
         table.add_column("Priority", justify="center")
         table.add_column("Status")
         for t in tasks:
             status_str = {0: "todo", 1: "doing", 2: "done"}.get(t.status, str(t.status))
-            table.add_row(t.id or "", t.title, str(t.priority), status_str)
+            table.add_row(t.title, str(t.priority), status_str)
         console.print(table)
 
 
@@ -343,11 +401,10 @@ def list(
             console.print("[yellow]No projects found.[/yellow]")
             return
         table = Table(title="Projects")
-        table.add_column("ID", style="dim")
         table.add_column("Name")
         table.add_column("Kind")
         for p in projects:
-            table.add_row(p.id, p.name, p.kind or "")
+            table.add_row(p.name, p.kind or "")
         console.print(table)
 
 
@@ -445,14 +502,12 @@ def data(
         tasks = result.get("tasks", [])
         if tasks:
             table = Table(title="Tasks")
-            table.add_column("ID", style="dim")
             table.add_column("Title")
             table.add_column("Priority", justify="center")
             table.add_column("Status")
             for t in tasks:
                 status_str = {0: "todo", 1: "doing", 2: "done"}.get(t.get("status", 0), str(t.get("status", 0)))
                 table.add_row(
-                    t.get("id", ""),
                     t.get("title", ""),
                     str(t.get("priority", 0)),
                     status_str,
@@ -462,12 +517,10 @@ def data(
         columns = result.get("columns", [])
         if columns:
             col_table = Table(title="Columns")
-            col_table.add_column("ID", style="dim")
             col_table.add_column("Name")
             col_table.add_column("Sort Order", justify="center")
             for c in columns:
                 col_table.add_row(
-                    c.get("id", ""),
                     c.get("name", ""),
                     str(c.get("sortOrder", 0)),
                 )
