@@ -11,3 +11,8 @@ wheels/
 
 # Superpowers working artifacts (specs, plans, design docs)
 /docs/*
+
+# Scraper scripts and API docs (regenerate as needed)
+scrape_docs.py
+parse_docs.py
+extract_json.py
