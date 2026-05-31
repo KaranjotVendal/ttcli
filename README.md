@@ -48,6 +48,23 @@ All commands support `--json` for machine-readable output.
 | `project delete` | Delete a project |
 | `project data` | Get project with tasks and columns |
 
+## Agent skill
+
+This repo ships an agent skill at:
+
+```text
+skills/ttcli/SKILL.md
+```
+
+Agents can read it to learn the preferred `ttcli` workflows: auth expectations, when to use `--json`, project name resolution, safe task/project operations, and destructive-action guidelines.
+
+To install the skill into a local agent environment, copy it into that agent's skills directory, for example:
+
+```bash
+mkdir -p ~/.agents/skills/ttcli
+cp skills/ttcli/SKILL.md ~/.agents/skills/ttcli/SKILL.md
+```
+
 ## Development
 
 ```bash
